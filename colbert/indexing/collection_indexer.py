@@ -58,18 +58,31 @@ class CollectionIndexer:
 
     def run(self, shared_lists):
         """执行完整的索引构建流程。"""
+        import time
         with torch.inference_mode():
             # 依次执行各个阶段，并在阶段之间设置屏障（barrier）以同步所有进程
+            t0 = time.time()
+            Run().print(f"[RANK {self.rank}] ===== 开始 SETUP 阶段 =====")
             self.setup()
+            Run().print(f"[RANK {self.rank}] SETUP 完成，耗时 {time.time()-t0:.1f}s，等待barrier...")
             distributed.barrier(self.rank)
             
+            t0 = time.time()
+            Run().print(f"[RANK {self.rank}] ===== 开始 TRAIN 阶段 =====")
             self.train(shared_lists)
+            Run().print(f"[RANK {self.rank}] TRAIN 完成，耗时 {time.time()-t0:.1f}s，等待barrier...")
             distributed.barrier(self.rank)
             
+            t0 = time.time()
+            Run().print(f"[RANK {self.rank}] ===== 开始 INDEX 阶段 =====")
             self.index()
+            Run().print(f"[RANK {self.rank}] INDEX 完成，耗时 {time.time()-t0:.1f}s，等待barrier...")
             distributed.barrier(self.rank)
             
+            t0 = time.time()
+            Run().print(f"[RANK {self.rank}] ===== 开始 FINALIZE 阶段 =====")
             self.finalize()
+            Run().print(f"[RANK {self.rank}] FINALIZE 完成，耗时 {time.time()-t0:.1f}s，等待barrier...")
             distributed.barrier(self.rank)
 
     def setup(self):
@@ -103,24 +116,35 @@ class CollectionIndexer:
         # 每个进程只处理分配给自己的采样文档
         local_pids = self.collection.enumerate(rank=self.rank)
         local_sample = [passage for pid, passage in local_pids if pid in sampled_pids]
+        Run().print(f'[RANK {self.rank}] 找到 {len(local_sample)} 个本地采样段落')
+        
         local_sample_embs, doclens = self.encoder.encode_passages(local_sample)
+        Run().print(f'[RANK {self.rank}] 编码完成，准备 all_reduce...')
 
         # 使用 all_reduce 聚合所有进程的信息
-        self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
+        self.num_sample_embs = torch.tensor([local_sample_embs.size(0) if local_sample_embs is not None else 0]).cuda()
+        Run().print(f'[RANK {self.rank}] 等待 all_reduce (num_sample_embs)...')
         torch.distributed.all_reduce(self.num_sample_embs)
+        Run().print(f'[RANK {self.rank}] all_reduce (num_sample_embs) 完成')
         
         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
         avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+        Run().print(f'[RANK {self.rank}] 等待 all_reduce (avg_doclen_est)...')
         torch.distributed.all_reduce(avg_doclen_est)
+        Run().print(f'[RANK {self.rank}] all_reduce (avg_doclen_est) 完成')
 
         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cuda()
+        Run().print(f'[RANK {self.rank}] 等待 all_reduce (nonzero_ranks)...')
         torch.distributed.all_reduce(nonzero_ranks)
+        Run().print(f'[RANK {self.rank}] all_reduce (nonzero_ranks) 完成')
 
         self.avg_doclen_est = avg_doclen_est.item() / nonzero_ranks.item()
         Run().print(f'估计的平均文档长度 = {self.avg_doclen_est:.2f}')
 
         # 将本地采样的嵌入保存到临时文件
-        torch.save(local_sample_embs, os.path.join(self.config.index_path_, f'sample.{self.rank}.pt'))
+        if local_sample_embs is not None:
+            torch.save(local_sample_embs, os.path.join(self.config.index_path_, f'sample.{self.rank}.pt'))
+            Run().print(f'[RANK {self.rank}] 保存采样嵌入完成')
         return self.avg_doclen_est
 
     def _save_plan(self):
@@ -203,12 +227,20 @@ class CollectionIndexer:
 
     def index(self):
         """索引阶段：所有进程并行地对自己分到的文档块进行编码和保存。"""
+        import time
+        Run().print(f"[RANK {self.rank}] ===== 进入INDEX阶段 =====")
         with self.saver.thread():
             batches = self.collection.enumerate_batches(rank=self.rank)
             for chunk_idx, offset, passages in tqdm.tqdm(batches, disable=self.rank > 0):
+                t0 = time.time()
+                Run().print(f"[RANK {self.rank}] 开始编码 chunk {chunk_idx}, {len(passages)} 个段落")
                 embs, doclens = self.encoder.encode_passages(passages)
+                t1 = time.time()
+                Run().print(f"[RANK {self.rank}] 编码完成 chunk {chunk_idx} (耗时 {t1-t0:.1f}s), 准备保存...")
                 Run().print_main(f"#> 正在保存块 {chunk_idx}: {len(passages):,} 个段落, {embs.size(0):,} 个嵌入。")
                 self.saver.save_chunk(chunk_idx, offset, embs, doclens)
+                t2 = time.time()
+                Run().print(f"[RANK {self.rank}] 保存完成 chunk {chunk_idx} (耗时 {t2-t1:.1f}s)")
 
     def finalize(self):
         """最终化阶段：仅由主进程执行，合并索引信息，构建 IVF。"""

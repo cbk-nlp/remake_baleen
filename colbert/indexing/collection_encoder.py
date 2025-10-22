@@ -40,6 +40,7 @@ class CollectionEncoder:
         Run().print(f"#> 正在编码 {len(passages)} 个段落...")
 
         if len(passages) == 0:
+            Run().print(f"#> [RANK {self.config.rank}] 空段落列表，直接返回")
             return None, None
 
         with torch.inference_mode():  # 关闭梯度计算以加速并减少内存使用
@@ -51,11 +52,13 @@ class CollectionEncoder:
                 # 调用模型的 docFromText 方法进行编码
                 # keep_dims='flatten' 表示返回一个扁平化的嵌入张量和每个文档的长度列表
                 embs_, doclens_ = self.checkpoint.docFromText(passages_batch, bsize=self.config.bsize,
-                                                              keep_dims='flatten', showprogress=False)
+                                                              keep_dims='flatten', showprogress=True)
                 embs.append(embs_)
                 doclens.extend(doclens_)
 
             # 将所有批次的嵌入向量拼接成一个大的张量
+            Run().print(f"#> [RANK {self.config.rank}] 编码完成，正在拼接 {len(embs)} 个张量...")
             embs = torch.cat(embs)
+            Run().print(f"#> [RANK {self.config.rank}] 拼接完成！总嵌入: {embs.shape}")
 
         return embs, doclens

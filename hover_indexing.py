@@ -17,11 +17,12 @@ def main(args):
     collection_path = os.path.join(args.datadir, 'wiki.abstracts.2017/collection.tsv')
     checkpoint_path = os.path.join(args.datadir, 'hover.checkpoints-v1.0/flipr-v1.0.dnn')
 
+    index_path = os.path.join(args.datadir, args.index)
     # 在运行上下文中初始化索引器并创建索引
-    with Run().context(RunConfig(root=args.root)):
-        config = ColBERTConfig(doc_maxlen=256, nbits=args.nbits)
+    with Run().context(RunConfig(root=args.root, nranks=6, overwrite=True)):
+        config = ColBERTConfig(doc_maxlen=256, nbits=args.nbits, rank=0, nranks=6)
         indexer = Indexer(checkpoint_path, config=config)
-        indexer.index(name=args.index, collection=collection_path)
+        indexer.index(name=args.index, index=index_path, collection=collection_path, overwrite=True)
 
 
 if __name__ == '__main__':
@@ -34,3 +35,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
+
+'''
+python hover_indexing.py --root /home/bkcai/task/hover/remake_baleen --datadir /data/bkcai/data/hover --index wiki17.hover.2bit --nbits 2
+'''

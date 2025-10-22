@@ -36,10 +36,10 @@ def init(rank):
 
     if is_distributed:
         num_gpus = torch.cuda.device_count()
-        print(f'总进程数 = {nranks} \t GPU数量 = {num_gpus} \t 当前进程 (rank {rank}) 使用 device={rank % num_gpus}')
+        print(f'总进程数 = {nranks} \t GPU数量 = {num_gpus} \t 当前进程 (rank {rank}) 使用 device={(rank + 1) % num_gpus}')
         
         # 为当前进程设置默认的 GPU 设备
-        torch.cuda.set_device(rank % num_gpus)
+        torch.cuda.set_device((rank + 1) % num_gpus)
         
         # 初始化进程组，使用 NCCL 后端进行 GPU 间的高效通信
         # 'env://' 初始化方法会从环境变量中自动读取 MASTER_ADDR 和 MASTER_PORT
@@ -62,4 +62,4 @@ def barrier(rank):
     nranks = int(os.environ.get('WORLD_SIZE', 1))
 
     if rank >= 0 and nranks > 1:
-        torch.distributed.barrier(device_ids=[rank % torch.cuda.device_count()])
+        torch.distributed.barrier(device_ids=[(rank + 1) % torch.cuda.device_count()])

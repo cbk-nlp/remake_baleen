@@ -34,7 +34,7 @@ class Indexer:
 
         # 从检查点加载配置，并与传入的 config 和全局 Run().config 合并
         self.checkpoint_config = ColBERTConfig.load_from_checkpoint(checkpoint)
-        self.config = ColBERTConfig.from_existing(self.checkpoint_config, config, Run().config)
+        self.config = ColBERTConfig.from_existing(self.checkpoint_config, Run().config, config)
         
         # 应用检查点配置
         self.configure(checkpoint=checkpoint)
@@ -77,7 +77,7 @@ class Indexer:
 
         return deleted
 
-    def index(self, name, collection, overwrite=False):
+    def index(self, name, index, collection, overwrite=False):
         """
         为给定的文档集合构建索引。
 
@@ -90,9 +90,9 @@ class Indexer:
             str: 构建完成的索引的路径。
         """
         # 配置索引名称和集合路径
-        self.configure(collection=collection, index_name=name)
+        self.configure(collection=collection, index_name=name, index_path=index)
         # 索引构建过程中的默认参数
-        self.configure(bsize=64, partitions=None)
+        self.configure(bsize=256, partitions=None)
 
         self.index_path = self.config.index_path_
 

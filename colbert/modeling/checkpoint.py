@@ -133,7 +133,7 @@ class Checkpoint(ColBERT):
                 D_packed, mask_packed = zip(*batches_D)
                 D, mask = torch.cat(D_packed)[reverse_indices], torch.cat(mask_packed)[reverse_indices]
                 doclens = mask.squeeze(-1).sum(-1).tolist()
-                D_flat = D[mask.bool().flatten()].cpu()
+                D_flat = D.view(-1, D.size(-1))[mask.bool().flatten()].cpu()
                 return (D_flat, doclens, *returned_text)
             else: # keep_dims is False
                 D_list = [d for batch in batches_D for d in batch]

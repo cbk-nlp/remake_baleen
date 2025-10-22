@@ -2,6 +2,7 @@
 
 import os
 import ujson
+from dataclasses import dataclass
 import dataclasses
 
 # 导入工具函数，用于从 .dnn 文件加载检查点

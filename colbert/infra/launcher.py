@@ -115,7 +115,7 @@ def setup_new_process(callee, port, return_value_queue, config, *args):
     os.environ["MASTER_PORT"] = port
     os.environ["WORLD_SIZE"] = str(config.nranks)
     os.environ["RANK"] = str(config.rank)
-    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config.gpus_[:nranks]))
+    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config.gpus_))
 
     # 初始化分布式后端
     distributed.init(rank)
@@ -126,3 +126,9 @@ def setup_new_process(callee, port, return_value_queue, config, *args):
 
     # 将返回值和 rank 一起放入队列
     return_value_queue.put((rank, return_val))
+
+def print_memory_stats(message=''):
+    """打印当前进程的内存使用情况。"""
+    if message:
+        print_message(message)
+    return 
